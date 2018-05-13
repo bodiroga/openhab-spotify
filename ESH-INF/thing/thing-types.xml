@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<thing:thing-descriptions bindingId="spotify" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:thing="http://eclipse.org/smarthome/schemas/thing-description/v1.0.0"
+	xsi:schemaLocation="http://eclipse.org/smarthome/schemas/thing-description/v1.0.0 http://eclipse.org/smarthome/schemas/thing-description-1.0.0.xsd">
+
+	<!-- Spotify Thing Type -->
+	<thing-type id="spotify">
+		<label>Spotify Account</label>
+		<description>Spotify Account Thing</description>
+	
+        <channels>
+            <channel typeId="playerControl" id="playerControl" />
+            <channel typeId="deviceName" id="deviceName" />
+            <channel typeId="deviceVolume" id="deviceVolume" />
+            <channel typeId="trackTitle" id="trackTitle" />
+            <channel typeId="trackArtist" id="trackArtist" />
+            <channel typeId="trackAlbum" id="trackAlbum" />
+            <channel typeId="trackDuration" id="trackDuration" />
+            <channel typeId="trackProgress" id="trackProgress"  /> 
+            <channel typeId="usersPlaylists" id="usersPlaylists"></channel>       
+        </channels>
+	
+		<config-description uri="thing-type:spotify:spotify">
+            <parameter-group name="credentials">
+                <label>Credentials</label>
+                <description>Credentials for the spotify account.</description>
+            </parameter-group>
+            <parameter-group name="connection">
+                <label>Connection</label>
+                <description>Connection settings.</description>
+	        </parameter-group>
+	        <parameter name="clientId" type="text" required="true" groupName="credentials">
+	            <label>Client ID</label>
+	            <description>Client ID of your Spotify application.</description>
+	            <context>network-address</context>
+	        </parameter>
+	        <parameter name="clientSecret" type="text" required="true" groupName="credentials">
+	            <label>Client secret</label>
+	            <description>Client secret of your Spotify application.</description>
+	        </parameter>
+	        <parameter name="redirectUriHost" type="text" required="true" groupName="credentials">
+	            <label>Redirect URI host</label>
+	            <description>Redirect URI host of your Spotify application.</description>
+	            <default>localhost</default>
+	        </parameter>
+	        <parameter name="redirectUriPort" type="integer" required="true" groupName="credentials">
+	            <label>Redirect URI port</label>
+	            <description>Redirect URI port of your Spotify application.</description>
+	            <default>8888</default>
+	        </parameter>
+	        <parameter name="redirectUriResource" type="text" required="true" groupName="credentials">
+	            <label>Redirect URI resource</label>
+	            <description>Redirect URI resource of your Spotify application.</description>
+	            <default>authorization</default>
+	        </parameter>
+	        <parameter name="playbackRefreshInterval" type="integer" required="true" min="1" max="60" unit="s" groupName="connection">
+	            <label>Playback info refresh interval</label>
+	            <description>Refresh interval to poll playback status information (in s).</description>
+	            <default>5</default>
+	            <advanced>true</advanced>
+	        </parameter>
+            <parameter name="devicesRefreshInterval" type="integer" required="true" min="30" max="600" unit="s" groupName="connection">
+                <label>Devices info refresh interval</label>
+                <description>Refresh interval to poll devices information (in s).</description>
+                <default>300</default>
+                <advanced>true</advanced>
+            </parameter>
+            <parameter name="playlistsRefreshInterval" type="integer" required="true" min="60" max="1800" unit="s" groupName="connection">
+                <label>Playlists info refresh interval</label>
+                <description>Refresh interval to poll playlists information (in s).</description>
+                <default>900</default>
+                <advanced>true</advanced>
+            </parameter>
+	        <parameter name="refreshToken" type="text" required="false" groupName="credentials">
+                <label>Refresh Token</label>
+                <description>The refresh token for the Spotify API.</description>
+                <default></default>
+                <advanced>true</advanced>
+            </parameter>
+	    </config-description>
+	</thing-type>
+
+	<channel-type id="playerControl">
+        <item-type>Player</item-type>
+        <label>Player control</label>
+        <description>Control the Spotify Player, e.g. start/stop/next/previous</description>
+        <category>Player</category>
+    </channel-type>
+    <channel-type id="deviceName">
+        <item-type>String</item-type>
+        <label>Device name</label>
+        <description>Name of the active device</description>
+    </channel-type>
+    <channel-type id="deviceVolume">
+        <item-type>Dimmer</item-type>
+        <label>Device volume</label>
+        <description>Volume of the active device</description>
+        <state min="0" max="100" step="1" pattern="%d %%" />
+    </channel-type>
+    <channel-type id="trackTitle">
+        <item-type>String</item-type>
+        <label>Track title</label>
+        <description>Title of the current track</description>
+        <state readOnly="true" pattern="%s"></state>
+    </channel-type>
+    <channel-type id="trackArtist">
+        <item-type>String</item-type>
+        <label>Track artist</label>
+        <description>Artist name of the current track</description>
+        <state readOnly="true" pattern="%s"></state>
+    </channel-type>
+    <channel-type id="trackAlbum">
+        <item-type>String</item-type>
+        <label>Track album</label>
+        <description>Album name of the current track</description>
+        <state readOnly="true" pattern="%s"></state>
+    </channel-type>
+    <channel-type id="trackDuration">
+        <item-type>Number</item-type>
+        <label>Track duration</label>
+        <description>Duration (seconds) of the current track</description>
+        <state readOnly="true" pattern="%d"></state>
+    </channel-type>
+    <channel-type id="trackProgress">
+        <item-type>Dimmer</item-type>
+        <label>Track progress</label>
+        <description>Progress (percentage) of the current track</description>
+        <state readOnly="true" min="0" max="100" step="1" pattern="%d %%"></state>
+    </channel-type>
+    <channel-type id="usersPlaylists">
+        <item-type>String</item-type>
+        <label>User's playlists</label>
+        <description>User's list of playlist</description>
+    </channel-type>
+
+</thing:thing-descriptions>
