@@ -676,7 +676,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
         String deviceId = savedDevices.get(newDeviceName).getId();
         JsonArray deviceIds = new JsonParser().parse(String.format("[\'%s\']", deviceId)).getAsJsonArray();
         try {
-            spotifyApi.transferUsersPlayback(deviceIds).play(false).build().execute();
+            spotifyApi.transferUsersPlayback(deviceIds).play(true).build().execute();
         } catch (SpotifyWebApiException e) {
             logger.error("Error transfering playback: {}", e.getMessage());
         } catch (IOException e) {
