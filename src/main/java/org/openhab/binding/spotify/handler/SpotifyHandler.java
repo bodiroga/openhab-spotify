@@ -152,6 +152,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     String deviceName = ((StringType) command).toString();
                     transferPlayback(deviceName);
                 }
+                playbackInfoPollingRunnable.run();
+                devicesInfoPollingRunnable.run();
                 break;
             case CHANNEL_PLAYER_CONTROL:
                 if (command instanceof PlayPauseType) {
@@ -175,6 +177,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     startPlaylist(playlistName);
                 }
                 playbackInfoPollingRunnable.run();
+                usersPlaylistsPollingRunnable.run();
             case CHANNEL_TRACK_PROGRESS:
                 if (command instanceof PercentType) {
                     int newTrackPositionPercentage = ((PercentType) command).intValue();
