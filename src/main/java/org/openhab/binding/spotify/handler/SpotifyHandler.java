@@ -72,6 +72,7 @@ import com.wrapper.spotify.requests.authorization.authorization_code.Authorizati
 import com.wrapper.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
 import com.wrapper.spotify.requests.data.player.GetInformationAboutUsersCurrentPlaybackRequest;
 import com.wrapper.spotify.requests.data.player.GetUsersAvailableDevicesRequest;
+import com.wrapper.spotify.requests.data.player.SeekToPositionInCurrentlyPlayingTrackRequest;
 import com.wrapper.spotify.requests.data.playlists.GetListOfCurrentUsersPlaylistsRequest;
 import com.wrapper.spotify.requests.data.users_profile.GetCurrentUsersProfileRequest;
 
@@ -144,6 +145,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     int volume = ((PercentType) command).intValue();
                     setPlaybackVolume(volume);
                 }
+                playbackInfoPollingRunnable.run();
                 break;
             case CHANNEL_DEVICE_NAME:
                 if (command instanceof StringType) {
@@ -158,20 +160,29 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     } else if (command.equals(PlayPauseType.PAUSE)) {
                         pauseTrack();
                     }
-                }
-                if (command instanceof NextPreviousType) {
+                } else if (command instanceof NextPreviousType) {
                     if (command.equals(NextPreviousType.NEXT)) {
                         nextTrack();
                     } else if (command.equals(NextPreviousType.PREVIOUS)) {
                         previousTrack();
                     }
                 }
+                playbackInfoPollingRunnable.run();
                 break;
             case CHANNEL_USERS_PLAYLISTS:
                 if (command instanceof StringType) {
                     String playlistName = ((StringType) command).toString();
                     startPlaylist(playlistName);
                 }
+                playbackInfoPollingRunnable.run();
+            case CHANNEL_TRACK_PROGRESS:
+                if (command instanceof PercentType) {
+                    int newTrackPositionPercentage = ((PercentType) command).intValue();
+                    int newTrackPositionMs = newTrackPositionPercentage * (playbackInfo.getTrackDuration() / 100);
+                    seekToPosition(newTrackPositionMs);
+
+                }
+                playbackInfoPollingRunnable.run();
         }
     }
 
@@ -244,7 +255,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
         updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.NONE, "Manual configuration started");
 
-        if (refreshToken.isEmpty()) {
+        if (refreshToken != null && refreshToken.isEmpty()) {
             logger.debug("Refresh token is invalid, starting authorization flow");
             this.presentAuthorizationCodeUri();
 
@@ -659,6 +670,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
         updateConfiguration(configuration);
     }
 
+    // Act upon the device
+
     private void transferPlayback(String newDeviceName) {
         String deviceId = savedDevices.get(newDeviceName).getId();
         JsonArray deviceIds = new JsonParser().parse(String.format("[\'%s\']", deviceId)).getAsJsonArray();
@@ -728,6 +741,23 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
             logger.error("Error playing track: {}", e.getMessage());
         } catch (IOException e) {
             logger.error("Error playing track: {}", e.getMessage());
+        }
+    }
+
+    private void seekToPosition(int newPositionMs) {
+        try {
+            String deviceName = playbackInfo.getDeviceName();
+            String deviceId = savedDevices.get(deviceName).getId();
+
+            SeekToPositionInCurrentlyPlayingTrackRequest seekToPositionInCurrentlyPlayingTrackRequest = spotifyApi
+                    .seekToPositionInCurrentlyPlayingTrack(newPositionMs).device_id(deviceId).build();
+
+            Future<String> stringFuture = seekToPositionInCurrentlyPlayingTrackRequest.executeAsync();
+            stringFuture.get();
+        } catch (InterruptedException e) {
+            logger.error("Erro seeking to new position: {}", e.getMessage());
+        } catch (ExecutionException e) {
+            logger.error("Error seeking to new position: {}", e.getMessage());
         }
     }
 

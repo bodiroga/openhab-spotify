@@ -125,7 +125,7 @@
         <item-type>Dimmer</item-type>
         <label>Track progress</label>
         <description>Progress (percentage) of the current track</description>
-        <state readOnly="true" min="0" max="100" step="1" pattern="%d %%"></state>
+        <state min="0" max="100" step="1" pattern="%d %%"></state>
     </channel-type>
     <channel-type id="usersPlaylists">
         <item-type>String</item-type>
