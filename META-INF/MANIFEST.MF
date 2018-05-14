@@ -22,7 +22,6 @@ Export-Package:
  org.openhab.binding.spotify.handler
 Import-Package: 
  com.google.gson,
- org.apache.commons.httpclient;version="3.1.0",
  org.eclipse.jdt.annotation;resolution:=optional,
  org.eclipse.smarthome.config.core,
  org.eclipse.smarthome.core.library.types,
@@ -31,7 +30,6 @@ Import-Package:
  org.eclipse.smarthome.core.thing.binding.builder,
  org.eclipse.smarthome.core.thing.type,
  org.eclipse.smarthome.core.types,
- org.eclipse.smarthome.core.util,
  org.openhab.binding.spotify,
  org.openhab.binding.spotify.handler,
  org.slf4j
