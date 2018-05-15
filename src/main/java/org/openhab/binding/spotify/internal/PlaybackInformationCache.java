@@ -12,10 +12,6 @@ public class PlaybackInformationCache {
     private Boolean isPlaying;
 
     public PlaybackInformationCache() {
-        this.trackTitle = "";
-        this.trackArtist = "";
-        this.trackAlbum = "";
-        this.deviceName = "";
     }
 
     public String getTrackTitle() {
