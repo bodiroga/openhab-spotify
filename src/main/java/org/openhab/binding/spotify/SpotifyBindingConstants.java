@@ -38,7 +38,7 @@ public class SpotifyBindingConstants {
     public static final String PLAYBACK_REFRESH_INTERVAL_PARAMETER = "playbackRefreshInterval";
     public static final String DEVICES_REFRESH_INTERVAL_PARAMETER = "devicesRefreshInterval";
     public static final String PLAYLISTS_REFRESH_INTERVAL_PARAMETER = "playlistsRefreshInterval";
-    public static final String REFRESH_TOKEN_PARAMETER = "refresToken";
+    public static final String REFRESH_TOKEN_PARAMETER = "refreshToken";
 
     // List of all Channel ids
     public static final String CHANNEL_PLAYER_CONTROL = "playerControl";
