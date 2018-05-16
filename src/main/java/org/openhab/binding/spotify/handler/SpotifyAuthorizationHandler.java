@@ -33,6 +33,10 @@ public class SpotifyAuthorizationHandler {
     }
 
     public void setResourceCallback(String resource, AuthorizationCodeListener listener) {
+        if (resource == null || listener == null) {
+            logger.error("'resource' or 'listener' is null in the setResourceCallback function");
+            return;
+        }
         this.resource = resource;
         this.listener = listener;
         this.server.createContext(String.format("/%s", this.resource), new ResponseHandler(this.state));
@@ -67,23 +71,35 @@ public class SpotifyAuthorizationHandler {
                 logger.error("The 'state' received is incorrect, fake response");
                 return;
             }
-            listener.setAuthorizationCode(code);
 
             t.sendResponseHeaders(200, response.length());
             OutputStream os = t.getResponseBody();
             os.write(response.getBytes());
             os.close();
+
+            stop();
+
+            listener.setAuthorizationCode(code);
         }
     }
 
     public void start() {
         logger.debug("Starting authorization handler");
-        this.server.start();
+        if (this.server != null) {
+            this.server.start();
+        } else {
+            logger.error("Authorization handler cannot be started because the server has not been properly created");
+        }
     }
 
     public void stop() {
         logger.debug("Stopping authorization handler");
-        this.server.stop(1);
+        if (this.server != null) {
+            this.server.stop(1);
+
+        } else {
+            logger.error("Authorization handler cannot be stop because the server has not been properly created");
+        }
     }
 
 }
