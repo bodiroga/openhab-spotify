@@ -107,7 +107,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
     private PlaybackInformationCache playbackInfo = new PlaybackInformationCache();
     private SpotifyHandlerFactory factory;
-    private Map<String, Device> savedDevices = new ConcurrentHashMap<>();
+    private Map<String, Device> availableDevices = new ConcurrentHashMap<>();
     private Map<String, PlaylistSimplified> savedPlaylists = new ConcurrentHashMap<>();
 
     @Nullable
@@ -428,46 +428,18 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                 Device[] devices = devicesFuture.get();
 
                 Map<String, Device> newDevices = new ConcurrentHashMap<>();
-                List<StateOption> states = new LinkedList<StateOption>();
 
                 for (Device device : devices) {
-                    states.add(new StateOption(device.getName(), device.getName()));
                     newDevices.put(device.getName(), device);
                 }
 
-                if (savedDevices.keySet().equals(newDevices.keySet())) {
+                if (availableDevices.keySet().equals(newDevices.keySet())) {
                     logger.debug("No new devices, keeping the channel the same");
                     return;
                 }
 
-                ChannelTypeUID channelTypeUID = new ChannelTypeUID(getThing().getUID() + ":" + CHANNEL_DEVICE_NAME);
-
-                ChannelType channelType = new ChannelType(channelTypeUID, false, "String", "Device name",
-                        "Name of the active device", null, null,
-                        new StateDescription(null, null, null, "%s", false, states), null);
-
-                factory.addChannelType(channelType);
-
-                ThingBuilder thingBuilder = editThing();
-
-                Channel channel = ChannelBuilder
-                        .create(new ChannelUID(getThing().getUID(), CHANNEL_DEVICE_NAME), "String")
-                        .withType(channelTypeUID).build();
-
-                // replace existing currentActivity with updated one
-                List<Channel> currentChannels = getThing().getChannels();
-                List<Channel> newChannels = new ArrayList<Channel>();
-                for (Channel c : currentChannels) {
-                    if (!c.getUID().equals(channel.getUID())) {
-                        newChannels.add(c);
-                    }
-                }
-                newChannels.add(channel);
-                thingBuilder.withChannels(newChannels);
-
-                updateThing(thingBuilder.build());
-
-                savedDevices = newDevices;
+                availableDevices = newDevices;
+                updateDeviceChannelStates(availableDevices);
             } catch (InterruptedException e) {
                 logger.error("DeviceInfoPollingRunnable 'InterruptedException' error: {}", e.getMessage());
             } catch (ExecutionException e) {
@@ -475,6 +447,42 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
             }
         }
     };
+
+    private void updateDeviceChannelStates(Map<String, Device> devices) {
+
+        List<StateOption> states = new LinkedList<StateOption>();
+
+        for (Device device : devices.values()) {
+            states.add(new StateOption(device.getName(), device.getName()));
+        }
+
+        ChannelTypeUID channelTypeUID = new ChannelTypeUID(getThing().getUID() + ":" + CHANNEL_DEVICE_NAME);
+
+        ChannelType channelType = new ChannelType(channelTypeUID, false, "String", "Device name",
+                "Name of the active device", null, null, new StateDescription(null, null, null, "%s", false, states),
+                null);
+
+        factory.addChannelType(channelType);
+
+        ThingBuilder thingBuilder = editThing();
+
+        Channel channel = ChannelBuilder.create(new ChannelUID(getThing().getUID(), CHANNEL_DEVICE_NAME), "String")
+                .withType(channelTypeUID).build();
+
+        // replace existing currentActivity with updated one
+        List<Channel> currentChannels = getThing().getChannels();
+        List<Channel> newChannels = new ArrayList<Channel>();
+        for (Channel c : currentChannels) {
+            if (!c.getUID().equals(channel.getUID())) {
+                newChannels.add(c);
+            }
+        }
+        newChannels.add(channel);
+        thingBuilder.withChannels(newChannels);
+
+        updateThing(thingBuilder.build());
+
+    }
 
     private Runnable playbackInfoPollingRunnable = new Runnable() {
         @Override
@@ -544,16 +552,25 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                 setChannelValue(CHANNEL_TRACK_PROGRESS, new PercentType(trackProgressPercentage));
             }
 
-            // Device name
-            String deviceName = currentlyPlayingContext.getDevice().getName();
+            // Active device
+            Device device = currentlyPlayingContext.getDevice();
+            logger.debug("Received device: {}", device);
+            if (!availableDevices.containsKey(device.getName())) {
+                logger.debug("New device detected: {}", device.getName());
+                availableDevices.put(device.getName(), device);
+                updateDeviceChannelStates(availableDevices);
+            }
+
+            // Active device name
+            String deviceName = device.getName();
             logger.debug("Received device 'name': {}", deviceName);
             if (!deviceName.equals(playbackInfo.getDeviceName())) {
                 playbackInfo.setDeviceName(deviceName);
                 setChannelValue(CHANNEL_DEVICE_NAME, new StringType(deviceName));
             }
 
-            // Device volume
-            Integer deviceVolume = currentlyPlayingContext.getDevice().getVolume_percent();
+            // Active device volume
+            Integer deviceVolume = device.getVolume_percent();
             logger.debug("Received device 'volume': {}", deviceVolume);
             if (!deviceVolume.equals(playbackInfo.getDeviceVolume())) {
                 playbackInfo.setDeviceVolume(deviceVolume);
@@ -676,7 +693,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     // Act upon the device
 
     private void transferPlayback(String newDeviceName) {
-        String deviceId = savedDevices.get(newDeviceName).getId();
+        String deviceId = availableDevices.get(newDeviceName).getId();
         JsonArray deviceIds = new JsonParser().parse(String.format("[\'%s\']", deviceId)).getAsJsonArray();
         try {
             spotifyApi.transferUsersPlayback(deviceIds).play(true).build().execute();
@@ -690,7 +707,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private void setPlaybackVolume(int volume) {
         try {
             String deviceName = playbackInfo.getDeviceName();
-            String deviceId = savedDevices.get(deviceName).getId();
+            String deviceId = availableDevices.get(deviceName).getId();
             spotifyApi.setVolumeForUsersPlayback(volume).device_id(deviceId).build().execute();
         } catch (SpotifyWebApiException e) {
             logger.error("Error setting plackback volume: {}", e.getMessage());
@@ -702,7 +719,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private void nextTrack() {
         try {
             String deviceName = playbackInfo.getDeviceName();
-            String deviceId = savedDevices.get(deviceName).getId();
+            String deviceId = availableDevices.get(deviceName).getId();
             spotifyApi.skipUsersPlaybackToNextTrack().device_id(deviceId).build().execute();
         } catch (SpotifyWebApiException e) {
             logger.error("Error playing next track: {}", e.getMessage());
@@ -714,7 +731,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private void previousTrack() {
         try {
             String deviceName = playbackInfo.getDeviceName();
-            String deviceId = savedDevices.get(deviceName).getId();
+            String deviceId = availableDevices.get(deviceName).getId();
             spotifyApi.skipUsersPlaybackToPreviousTrack().device_id(deviceId).build().execute();
         } catch (SpotifyWebApiException e) {
             logger.error("Error playing previous track: {}", e.getMessage());
@@ -726,7 +743,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private void playTrack() {
         try {
             String deviceName = playbackInfo.getDeviceName();
-            String deviceId = savedDevices.get(deviceName).getId();
+            String deviceId = availableDevices.get(deviceName).getId();
             spotifyApi.startResumeUsersPlayback().device_id(deviceId).build().execute();
         } catch (SpotifyWebApiException e) {
             logger.error("Error playing track: {}", e.getMessage());
@@ -738,7 +755,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private void pauseTrack() {
         try {
             String deviceName = playbackInfo.getDeviceName();
-            String deviceId = savedDevices.get(deviceName).getId();
+            String deviceId = availableDevices.get(deviceName).getId();
             spotifyApi.pauseUsersPlayback().device_id(deviceId).build().execute();
         } catch (SpotifyWebApiException e) {
             logger.error("Error playing track: {}", e.getMessage());
@@ -750,7 +767,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private void seekToPosition(int newPositionMs) {
         try {
             String deviceName = playbackInfo.getDeviceName();
-            String deviceId = savedDevices.get(deviceName).getId();
+            String deviceId = availableDevices.get(deviceName).getId();
 
             SeekToPositionInCurrentlyPlayingTrackRequest seekToPositionInCurrentlyPlayingTrackRequest = spotifyApi
                     .seekToPositionInCurrentlyPlayingTrack(newPositionMs).device_id(deviceId).build();
@@ -767,7 +784,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private void startPlaylist(String playlistName) {
         try {
             String deviceName = playbackInfo.getDeviceName();
-            String deviceId = savedDevices.get(deviceName).getId();
+            String deviceId = availableDevices.get(deviceName).getId();
             String playlistId = savedPlaylists.get(playlistName).getId();
             String userId = user.getId();
             String contextUri = String.format("spotify:user:%s:playlist:%s", userId, playlistId);
