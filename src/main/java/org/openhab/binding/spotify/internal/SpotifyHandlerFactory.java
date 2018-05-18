@@ -107,4 +107,11 @@ public class SpotifyHandlerFactory extends BaseThingHandlerFactory implements Ch
         channelTypes.remove(type);
     }
 
+    public void updateChannelType(ChannelType type) {
+        if (channelTypes.contains(type)) {
+            channelTypes.remove(type);
+        }
+        channelTypes.add(type);
+    }
+
 }

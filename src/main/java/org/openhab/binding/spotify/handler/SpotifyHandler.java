@@ -462,7 +462,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                 "Name of the active device", null, null, new StateDescription(null, null, null, "%s", false, states),
                 null);
 
-        factory.addChannelType(channelType);
+        factory.updateChannelType(channelType);
 
         ThingBuilder thingBuilder = editThing();
 
@@ -621,7 +621,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                         "User's list of playlist", null, null,
                         new StateDescription(null, null, null, "%s", false, states), null);
 
-                factory.addChannelType(channelType);
+                factory.updateChannelType(channelType);
 
                 ThingBuilder thingBuilder = editThing();
 
