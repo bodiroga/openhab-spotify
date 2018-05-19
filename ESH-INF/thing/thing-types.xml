@@ -10,14 +10,12 @@
 	
         <channels>
             <channel typeId="playerControl" id="playerControl" />
-            <channel typeId="deviceName" id="deviceName" />
             <channel typeId="deviceVolume" id="deviceVolume" />
             <channel typeId="trackTitle" id="trackTitle" />
             <channel typeId="trackArtist" id="trackArtist" />
             <channel typeId="trackAlbum" id="trackAlbum" />
             <channel typeId="trackDuration" id="trackDuration" />
-            <channel typeId="trackProgress" id="trackProgress"  /> 
-            <channel typeId="usersPlaylists" id="usersPlaylists"></channel>       
+            <channel typeId="trackProgress" id="trackProgress"  />
         </channels>
 	
 		<config-description uri="thing-type:spotify:spotify">
@@ -86,11 +84,6 @@
         <description>Control the Spotify Player, e.g. start/stop/next/previous</description>
         <category>Player</category>
     </channel-type>
-    <channel-type id="deviceName">
-        <item-type>String</item-type>
-        <label>Device name</label>
-        <description>Name of the active device</description>
-    </channel-type>
     <channel-type id="deviceVolume">
         <item-type>Dimmer</item-type>
         <label>Device volume</label>
@@ -127,10 +120,4 @@
         <description>Progress (percentage) of the current track</description>
         <state min="0" max="100" step="1" pattern="%d %%"></state>
     </channel-type>
-    <channel-type id="usersPlaylists">
-        <item-type>String</item-type>
-        <label>User's playlists</label>
-        <description>User's list of playlist</description>
-    </channel-type>
-
 </thing:thing-descriptions>

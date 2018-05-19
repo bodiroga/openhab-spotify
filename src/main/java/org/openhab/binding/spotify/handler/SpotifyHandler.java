@@ -125,6 +125,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     @Nullable
     private ScheduledFuture<?> usersPlaylistsPollingJob;
 
+    private boolean noInformationAvailable = false;
+
     public SpotifyHandler(Thing thing, SpotifyHandlerFactory factory) {
         super(thing);
         this.factory = factory;
@@ -238,7 +240,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
     @Override
     public void initialize() {
-        logger.debug("Initializing Spotify acoount handler");
+        logger.debug("Initializing Spotify account handler");
 
         config = getConfigAs(SpotifyConfiguration.class);
 
@@ -255,6 +257,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
         this.spotifyApi = new SpotifyApi.Builder().setClientId(clientId).setClientSecret(clientSecret)
                 .setRedirectUri(SpotifyHttpManager.makeUri(this.redirectUri)).build();
+
+        playbackInfo = new PlaybackInformationCache();
 
         updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.NONE, "Manual configuration started");
 
@@ -429,6 +433,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
                 Map<String, Device> newDevices = new ConcurrentHashMap<>();
 
+                logger.debug("Number of available devices: {}", devices.length);
                 for (Device device : devices) {
                     newDevices.put(device.getName(), device);
                 }
@@ -456,7 +461,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
             states.add(new StateOption(device.getName(), device.getName()));
         }
 
-        ChannelTypeUID channelTypeUID = new ChannelTypeUID(getThing().getUID() + ":" + CHANNEL_DEVICE_NAME);
+        ChannelTypeUID channelTypeUID = new ChannelTypeUID(
+                getThing().getThingTypeUID().getBindingId() + ":" + CHANNEL_DEVICE_NAME);
 
         ChannelType channelType = new ChannelType(channelTypeUID, false, "String", "Device name",
                 "Name of the active device", null, null, new StateDescription(null, null, null, "%s", false, states),
@@ -500,8 +506,15 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
                 currentlyPlayingContext = currentlyPlayingContextFuture.get();
 
+                noInformationAvailable = false;
+
             } catch (ExecutionException e) {
-                logger.debug("Nothing playing 'ExecutionException': {}", e);
+                logger.debug("Nothing playing");
+                if (!noInformationAvailable) {
+                    setChannelValue(CHANNEL_PLAYER_CONTROL, PlayPauseType.PAUSE);
+                    setChannelValue(CHANNEL_TRACK_PROGRESS, new PercentType(0));
+                }
+                noInformationAvailable = true;
                 return;
             } catch (InterruptedException e) {
                 logger.debug("Nothing playing 'InterruptedException': {}", e);
@@ -615,7 +628,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     return;
                 }
 
-                ChannelTypeUID channelTypeUID = new ChannelTypeUID(getThing().getUID() + ":" + CHANNEL_USERS_PLAYLISTS);
+                ChannelTypeUID channelTypeUID = new ChannelTypeUID(
+                        getThing().getThingTypeUID().getBindingId() + ":" + CHANNEL_USERS_PLAYLISTS);
 
                 ChannelType channelType = new ChannelType(channelTypeUID, false, "String", "User's playlists",
                         "User's list of playlist", null, null,
@@ -693,6 +707,9 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     // Act upon the device
 
     private void transferPlayback(String newDeviceName) {
+        if (!availableDevices.containsKey(newDeviceName)) {
+            logger.error("Device '{}' is not available", newDeviceName);
+        }
         String deviceId = availableDevices.get(newDeviceName).getId();
         JsonArray deviceIds = new JsonParser().parse(String.format("[\'%s\']", deviceId)).getAsJsonArray();
         try {

@@ -35,6 +35,8 @@ import org.eclipse.smarthome.core.thing.type.ChannelTypeProvider;
 import org.eclipse.smarthome.core.thing.type.ChannelTypeUID;
 import org.openhab.binding.spotify.handler.SpotifyHandler;
 import org.osgi.service.component.annotations.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The {@link SpotifyHandlerFactory} is responsible for creating things and thing
@@ -48,6 +50,8 @@ import org.osgi.service.component.annotations.Component;
 public class SpotifyHandlerFactory extends BaseThingHandlerFactory implements ChannelTypeProvider {
 
     private static final Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Collections.singleton(THING_TYPE_SPOTIFY);
+
+    private final Logger logger = LoggerFactory.getLogger(SpotifyHandlerFactory.class);
 
     private List<ChannelType> channelTypes = new CopyOnWriteArrayList<ChannelType>();
     private List<ChannelGroupType> channelGroupTypes = new CopyOnWriteArrayList<ChannelGroupType>();
@@ -104,13 +108,15 @@ public class SpotifyHandlerFactory extends BaseThingHandlerFactory implements Ch
     }
 
     public void removeChannelType(ChannelType type) {
-        channelTypes.remove(type);
+        for (ChannelType channelType : channelTypes) {
+            if (type.getUID().equals(channelType.getUID())) {
+                channelTypes.remove(channelType);
+            }
+        }
     }
 
     public void updateChannelType(ChannelType type) {
-        if (channelTypes.contains(type)) {
-            channelTypes.remove(type);
-        }
+        channelTypes.remove(type);
         channelTypes.add(type);
     }
 
