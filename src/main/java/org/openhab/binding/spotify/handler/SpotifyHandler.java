@@ -43,15 +43,15 @@ import org.eclipse.smarthome.core.types.Command;
 import org.eclipse.smarthome.core.types.RefreshType;
 import org.eclipse.smarthome.core.types.State;
 import org.eclipse.smarthome.core.types.StateOption;
+import org.openhab.binding.spotify.internal.AccountInformationCache;
 import org.openhab.binding.spotify.internal.AuthorizationCodeListener;
+import org.openhab.binding.spotify.internal.PlaybackControl;
 import org.openhab.binding.spotify.internal.PlaybackInformationCache;
 import org.openhab.binding.spotify.internal.SpotifyConfiguration;
 import org.openhab.binding.spotify.internal.SpotifyStateDescriptionOptionsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonParser;
 import com.wrapper.spotify.SpotifyApi;
 import com.wrapper.spotify.SpotifyHttpManager;
 import com.wrapper.spotify.exceptions.SpotifyWebApiException;
@@ -67,7 +67,6 @@ import com.wrapper.spotify.requests.authorization.authorization_code.Authorizati
 import com.wrapper.spotify.requests.authorization.authorization_code.AuthorizationCodeUriRequest;
 import com.wrapper.spotify.requests.data.player.GetInformationAboutUsersCurrentPlaybackRequest;
 import com.wrapper.spotify.requests.data.player.GetUsersAvailableDevicesRequest;
-import com.wrapper.spotify.requests.data.player.SeekToPositionInCurrentlyPlayingTrackRequest;
 import com.wrapper.spotify.requests.data.playlists.GetListOfCurrentUsersPlaylistsRequest;
 import com.wrapper.spotify.requests.data.users_profile.GetCurrentUsersProfileRequest;
 
@@ -86,14 +85,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private final String SCOPE = "user-read-playback-state,user-modify-playback-state,playlist-read-private";
     private final int TOKEN_REFRESH_ANTICIPATION = 60;
 
-    private String clientId = "";
-    private String clientSecret = "";
-
-    private String redirectUriHost = "";
     private String refreshToken = "";
-    private int redirectUriPort;
-    private String redirectUriResource = "";
-    private String redirectUri = "";
+    private boolean noInformationAvailable = false;
 
     private String authorizationCode = "";
     private int playbackRefreshInterval;
@@ -102,26 +95,23 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
     private SpotifyStateDescriptionOptionsProvider stateDescriptionProvider;
 
-    private PlaybackInformationCache playbackInfo = new PlaybackInformationCache();
-    private Map<String, Device> availableDevices = new ConcurrentHashMap<>();
-    private Map<String, PlaylistSimplified> savedPlaylists = new ConcurrentHashMap<>();
-
-    @Nullable
-    private SpotifyConfiguration config;
     @Nullable
     private SpotifyApi spotifyApi;
+
+    private PlaybackInformationCache playbackInfo = new PlaybackInformationCache();
+    private AccountInformationCache accountInfo = new AccountInformationCache();
+
+    @Nullable
+    private PlaybackControl playbackControl;
+
     @Nullable
     private SpotifyAuthorizationHandler spotifyAuthorizationHandler;
-    @Nullable
-    private User user;
     @Nullable
     private ScheduledFuture<?> devicesInfoPollingJob;
     @Nullable
     private ScheduledFuture<?> playbackInfoPollingJob;
     @Nullable
     private ScheduledFuture<?> usersPlaylistsPollingJob;
-
-    private boolean noInformationAvailable = false;
 
     public SpotifyHandler(Thing thing, SpotifyStateDescriptionOptionsProvider provider) {
         super(thing);
@@ -135,20 +125,25 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
         }
         logger.debug("New command '{}' received on channel '{}'", command, channelUID);
 
+        if (!getThing().getStatus().equals(ThingStatus.ONLINE)) {
+            logger.warn("Connection with the Spotify API is not established");
+            return;
+        }
+
         String channel = channelUID.getId();
 
         switch (channel) {
             case CHANNEL_DEVICE_VOLUME:
                 if (command instanceof PercentType) {
                     int volume = ((PercentType) command).intValue();
-                    setPlaybackVolume(volume);
+                    playbackControl.setPlaybackVolume(volume);
                 }
                 playbackInfoPollingRunnable.run();
                 break;
             case CHANNEL_DEVICE_NAME:
                 if (command instanceof StringType) {
                     String deviceName = ((StringType) command).toString();
-                    transferPlayback(deviceName);
+                    playbackControl.transferPlayback(deviceName);
                 }
                 playbackInfoPollingRunnable.run();
                 devicesInfoPollingRunnable.run();
@@ -156,15 +151,15 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
             case CHANNEL_PLAYER_CONTROL:
                 if (command instanceof PlayPauseType) {
                     if (command.equals(PlayPauseType.PLAY)) {
-                        playTrack();
+                        playbackControl.playTrack();
                     } else if (command.equals(PlayPauseType.PAUSE)) {
-                        pauseTrack();
+                        playbackControl.pauseTrack();
                     }
                 } else if (command instanceof NextPreviousType) {
                     if (command.equals(NextPreviousType.NEXT)) {
-                        nextTrack();
+                        playbackControl.nextTrack();
                     } else if (command.equals(NextPreviousType.PREVIOUS)) {
-                        previousTrack();
+                        playbackControl.previousTrack();
                     }
                 }
                 playbackInfoPollingRunnable.run();
@@ -172,7 +167,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
             case CHANNEL_USER_PLAYLISTS:
                 if (command instanceof StringType) {
                     String playlistName = ((StringType) command).toString();
-                    startPlaylist(playlistName);
+                    playbackControl.startPlaylist(playlistName);
                 }
                 playbackInfoPollingRunnable.run();
                 usersPlaylistsPollingRunnable.run();
@@ -180,7 +175,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                 if (command instanceof PercentType) {
                     int newTrackPositionPercentage = ((PercentType) command).intValue();
                     int newTrackPositionMs = newTrackPositionPercentage * (playbackInfo.getTrackDuration() / 100);
-                    seekToPosition(newTrackPositionMs);
+                    playbackControl.seekToPosition(newTrackPositionMs);
 
                 }
                 playbackInfoPollingRunnable.run();
@@ -238,31 +233,32 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     public void initialize() {
         logger.debug("Initializing Spotify account handler");
 
-        config = getConfigAs(SpotifyConfiguration.class);
+        SpotifyConfiguration config = getConfigAs(SpotifyConfiguration.class);
 
-        clientId = config.clientId;
-        clientSecret = config.clientSecret;
+        String clientId = config.clientId;
+        String clientSecret = config.clientSecret;
+        String redirectUriHost = config.redirectUriHost;
+        int redirectUriPort = config.redirectUriPort;
+        String redirectUriResource = config.redirectUriResource;
         playbackRefreshInterval = config.playbackRefreshInterval;
         devicesRefreshInterval = config.devicesRefreshInterval;
         playlistsRefreshInterval = config.playlistsRefreshInterval;
-        redirectUriHost = config.redirectUriHost;
-        redirectUriPort = config.redirectUriPort;
-        redirectUriResource = config.redirectUriResource;
         refreshToken = config.refreshToken;
-        redirectUri = String.format("http://%s:%s/%s", redirectUriHost, redirectUriPort, redirectUriResource);
+        String redirectUri = String.format("http://%s:%s/%s", redirectUriHost, redirectUriPort, redirectUriResource);
 
         this.spotifyApi = new SpotifyApi.Builder().setClientId(clientId).setClientSecret(clientSecret)
-                .setRedirectUri(SpotifyHttpManager.makeUri(this.redirectUri)).build();
+                .setRedirectUri(SpotifyHttpManager.makeUri(redirectUri)).build();
 
         playbackInfo = new PlaybackInformationCache();
+        accountInfo = new AccountInformationCache();
 
         updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.NONE, "Manual configuration started");
 
-        if (refreshToken != null && refreshToken.isEmpty()) {
+        if (refreshToken.isEmpty()) {
             logger.debug("Refresh token is invalid, starting authorization flow");
             this.presentAuthorizationCodeUri();
 
-            this.startAuthorizationCodeProcess();
+            this.startAuthorizationCodeProcess(redirectUriPort, redirectUriResource);
 
         } else {
             logger.debug("Refresh token is valid, getting the accessToken");
@@ -299,9 +295,9 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     }
 
     // Authorization code methods
-    private void startAuthorizationCodeProcess() {
-        this.spotifyAuthorizationHandler = new SpotifyAuthorizationHandler(this.redirectUriPort);
-        this.spotifyAuthorizationHandler.setResourceCallback(this.redirectUriResource, this);
+    private void startAuthorizationCodeProcess(int redirectUriPort, String redirectUriResource) {
+        this.spotifyAuthorizationHandler = new SpotifyAuthorizationHandler(redirectUriPort);
+        this.spotifyAuthorizationHandler.setResourceCallback(redirectUriResource, this);
         this.spotifyAuthorizationHandler.setState(STATE);
         this.spotifyAuthorizationHandler.start();
     }
@@ -373,7 +369,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
             try {
                 String accessToken = getAccessToken();
-                if (accessToken != null && !accessToken.isEmpty()) {
+                if (!accessToken.isEmpty()) {
                     setAccessToken(accessToken);
                 }
             } catch (Exception e) {
@@ -387,6 +383,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
         spotifyApi.setAccessToken(accessToken);
 
         if (!getThing().getStatus().equals(ThingStatus.ONLINE)) {
+            logger.info("Spotify account correctly configured");
+            playbackControl = new PlaybackControl(spotifyApi, playbackInfo, accountInfo);
             updateStatus(ThingStatus.ONLINE);
         }
 
@@ -434,13 +432,13 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     newDevices.put(device.getName(), device);
                 }
 
-                if (availableDevices.keySet().equals(newDevices.keySet())) {
+                if (accountInfo.getAvailableDevices().keySet().equals(newDevices.keySet())) {
                     logger.debug("No new devices, keeping the channel the same");
                     return;
                 }
 
-                availableDevices = newDevices;
-                updateDeviceChannelStates(availableDevices);
+                accountInfo.setAvailableDevices(newDevices);
+                updateDeviceChannelStates(accountInfo.getAvailableDevices());
             } catch (InterruptedException e) {
                 logger.error("DeviceInfoPollingRunnable 'InterruptedException' error: {}", e.getMessage());
             } catch (ExecutionException e) {
@@ -539,10 +537,10 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
             // Active device
             Device device = currentlyPlayingContext.getDevice();
             logger.debug("Received device: {}", device);
-            if (!availableDevices.containsKey(device.getName())) {
+            if (!accountInfo.getAvailableDevices().containsKey(device.getName())) {
                 logger.debug("New device detected: {}", device.getName());
-                availableDevices.put(device.getName(), device);
-                updateDeviceChannelStates(availableDevices);
+                accountInfo.getAvailableDevices().put(device.getName(), device);
+                updateDeviceChannelStates(accountInfo.getAvailableDevices());
             }
 
             // Active device name
@@ -594,7 +592,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     newPlaylists.put(playlist.getName(), playlist);
                 }
 
-                if (savedPlaylists.keySet().equals(newPlaylists.keySet())) {
+                if (accountInfo.getSavedPlaylists().keySet().equals(newPlaylists.keySet())) {
                     logger.debug("No new playlists, keeping the channel the same");
                     return;
                 }
@@ -602,7 +600,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                 stateDescriptionProvider.setStateOptions(new ChannelUID(getThing().getUID(), CHANNEL_USER_PLAYLISTS),
                         options);
 
-                savedPlaylists = newPlaylists;
+                accountInfo.setSavedPlaylists(newPlaylists);
 
             } catch (InterruptedException e) {
                 logger.debug("usersPlaylistPollingRunnable error 'InterruptedException': {}", e.getMessage());
@@ -621,12 +619,13 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
             Future<User> userFuture = getCurrentUsersProfileRequest.executeAsync();
 
             try {
-                user = userFuture.get();
+                User user = userFuture.get();
+                accountInfo.setUser(user);
                 logger.debug("User name: {}", user.getDisplayName());
             } catch (InterruptedException e) {
                 logger.error("Error getting user information 'InterruptedException': {}", e.getMessage());
             } catch (ExecutionException e) {
-                logger.error("Error getting user information:'InterruptedException' {}", e.getMessage());
+                logger.error("Error getting user information:'ExecutionException' {}", e.getMessage());
             }
         }
     };
@@ -648,117 +647,5 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
         Configuration configuration = editConfiguration();
         configuration.put(REFRESH_TOKEN_PARAMETER, refreshToken);
         updateConfiguration(configuration);
-    }
-
-    // Act upon the device
-
-    private void transferPlayback(String newDeviceName) {
-        if (!availableDevices.containsKey(newDeviceName)) {
-            logger.error("Device '{}' is not available", newDeviceName);
-        }
-        String deviceId = availableDevices.get(newDeviceName).getId();
-        JsonArray deviceIds = new JsonParser().parse(String.format("[\'%s\']", deviceId)).getAsJsonArray();
-        try {
-            spotifyApi.transferUsersPlayback(deviceIds).play(true).build().execute();
-        } catch (SpotifyWebApiException e) {
-            logger.error("Error transfering playback: {}", e.getMessage());
-        } catch (IOException e) {
-            logger.error("Error transfering playback: {}", e.getMessage());
-        }
-    }
-
-    private void setPlaybackVolume(int volume) {
-        try {
-            String deviceName = playbackInfo.getDeviceName();
-            String deviceId = availableDevices.get(deviceName).getId();
-            spotifyApi.setVolumeForUsersPlayback(volume).device_id(deviceId).build().execute();
-        } catch (SpotifyWebApiException e) {
-            logger.error("Error setting plackback volume: {}", e.getMessage());
-        } catch (IOException e) {
-            logger.error("Error setting plackback volume: {}", e.getMessage());
-        }
-    }
-
-    private void nextTrack() {
-        try {
-            String deviceName = playbackInfo.getDeviceName();
-            String deviceId = availableDevices.get(deviceName).getId();
-            spotifyApi.skipUsersPlaybackToNextTrack().device_id(deviceId).build().execute();
-        } catch (SpotifyWebApiException e) {
-            logger.error("Error playing next track: {}", e.getMessage());
-        } catch (IOException e) {
-            logger.error("Error playing next track: {}", e.getMessage());
-        }
-    }
-
-    private void previousTrack() {
-        try {
-            String deviceName = playbackInfo.getDeviceName();
-            String deviceId = availableDevices.get(deviceName).getId();
-            spotifyApi.skipUsersPlaybackToPreviousTrack().device_id(deviceId).build().execute();
-        } catch (SpotifyWebApiException e) {
-            logger.error("Error playing previous track: {}", e.getMessage());
-        } catch (IOException e) {
-            logger.error("Error playing previous track: {}", e.getMessage());
-        }
-    }
-
-    private void playTrack() {
-        try {
-            String deviceName = playbackInfo.getDeviceName();
-            String deviceId = availableDevices.get(deviceName).getId();
-            spotifyApi.startResumeUsersPlayback().device_id(deviceId).build().execute();
-        } catch (SpotifyWebApiException e) {
-            logger.error("Error playing track: {}", e.getMessage());
-        } catch (IOException e) {
-            logger.error("Error playing track: {}", e.getMessage());
-        }
-    }
-
-    private void pauseTrack() {
-        try {
-            String deviceName = playbackInfo.getDeviceName();
-            String deviceId = availableDevices.get(deviceName).getId();
-            spotifyApi.pauseUsersPlayback().device_id(deviceId).build().execute();
-        } catch (SpotifyWebApiException e) {
-            logger.error("Error playing track: {}", e.getMessage());
-        } catch (IOException e) {
-            logger.error("Error playing track: {}", e.getMessage());
-        }
-    }
-
-    private void seekToPosition(int newPositionMs) {
-        try {
-            String deviceName = playbackInfo.getDeviceName();
-            String deviceId = availableDevices.get(deviceName).getId();
-
-            SeekToPositionInCurrentlyPlayingTrackRequest seekToPositionInCurrentlyPlayingTrackRequest = spotifyApi
-                    .seekToPositionInCurrentlyPlayingTrack(newPositionMs).device_id(deviceId).build();
-
-            Future<String> stringFuture = seekToPositionInCurrentlyPlayingTrackRequest.executeAsync();
-            stringFuture.get();
-        } catch (InterruptedException e) {
-            logger.error("Erro seeking to new position: {}", e.getMessage());
-        } catch (ExecutionException e) {
-            logger.error("Error seeking to new position: {}", e.getMessage());
-        }
-    }
-
-    private void startPlaylist(String playlistName) {
-        try {
-            String deviceName = playbackInfo.getDeviceName();
-            String deviceId = availableDevices.get(deviceName).getId();
-            String playlistId = savedPlaylists.get(playlistName).getId();
-            String userId = user.getId();
-            String contextUri = String.format("spotify:user:%s:playlist:%s", userId, playlistId);
-            logger.debug("Starting playlist '{}' ('{}') on device '{}' ('{}')", playlistName, contextUri, deviceName,
-                    deviceId);
-            spotifyApi.startResumeUsersPlayback().context_uri(contextUri).device_id(deviceId).build().execute();
-        } catch (SpotifyWebApiException e) {
-            logger.error("Error starting playlist: {}", e.getMessage());
-        } catch (IOException e) {
-            logger.error("Error starting playlist: {}", e.getMessage());
-        }
-
     }
 }
