@@ -10,12 +10,14 @@
 	
         <channels>
             <channel typeId="playerControl" id="playerControl" />
-            <channel typeId="deviceVolume" id="deviceVolume" />
             <channel typeId="trackTitle" id="trackTitle" />
             <channel typeId="trackArtist" id="trackArtist" />
             <channel typeId="trackAlbum" id="trackAlbum" />
             <channel typeId="trackDuration" id="trackDuration" />
             <channel typeId="trackProgress" id="trackProgress"  />
+            <channel typeId="userPlaylists" id="userPlaylists" />
+            <channel typeId="deviceName" id="deviceName" />
+            <channel typeId="deviceVolume" id="deviceVolume" />
         </channels>
 	
 		<config-description uri="thing-type:spotify:spotify">
@@ -84,12 +86,6 @@
         <description>Control the Spotify Player, e.g. start/stop/next/previous</description>
         <category>Player</category>
     </channel-type>
-    <channel-type id="deviceVolume">
-        <item-type>Dimmer</item-type>
-        <label>Device volume</label>
-        <description>Volume of the active device</description>
-        <state min="0" max="100" step="1" pattern="%d %%" />
-    </channel-type>
     <channel-type id="trackTitle">
         <item-type>String</item-type>
         <label>Track title</label>
@@ -119,5 +115,21 @@
         <label>Track progress</label>
         <description>Progress (percentage) of the current track</description>
         <state min="0" max="100" step="1" pattern="%d %%"></state>
+    </channel-type>
+    <channel-type id="userPlaylists">
+        <item-type>String</item-type>
+        <label>User's playlists</label>
+        <description>User's list of playlist</description>
+    </channel-type>
+    <channel-type id="deviceName">
+        <item-type>String</item-type>
+        <label>Device name</label>
+        <description>Name of the active device</description>
+    </channel-type>
+    <channel-type id="deviceVolume">
+        <item-type>Dimmer</item-type>
+        <label>Device volume</label>
+        <description>Volume of the active device</description>
+        <state min="0" max="100" step="1" pattern="%d %%" />
     </channel-type>
 </thing:thing-descriptions>

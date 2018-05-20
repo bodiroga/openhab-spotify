@@ -39,19 +39,14 @@ import org.eclipse.smarthome.core.thing.Thing;
 import org.eclipse.smarthome.core.thing.ThingStatus;
 import org.eclipse.smarthome.core.thing.ThingStatusDetail;
 import org.eclipse.smarthome.core.thing.binding.BaseThingHandler;
-import org.eclipse.smarthome.core.thing.binding.builder.ChannelBuilder;
-import org.eclipse.smarthome.core.thing.binding.builder.ThingBuilder;
-import org.eclipse.smarthome.core.thing.type.ChannelType;
-import org.eclipse.smarthome.core.thing.type.ChannelTypeUID;
 import org.eclipse.smarthome.core.types.Command;
 import org.eclipse.smarthome.core.types.RefreshType;
 import org.eclipse.smarthome.core.types.State;
-import org.eclipse.smarthome.core.types.StateDescription;
 import org.eclipse.smarthome.core.types.StateOption;
 import org.openhab.binding.spotify.internal.AuthorizationCodeListener;
 import org.openhab.binding.spotify.internal.PlaybackInformationCache;
 import org.openhab.binding.spotify.internal.SpotifyConfiguration;
-import org.openhab.binding.spotify.internal.SpotifyHandlerFactory;
+import org.openhab.binding.spotify.internal.SpotifyStateDescriptionOptionsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -105,8 +100,9 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
     private int devicesRefreshInterval;
     private int playlistsRefreshInterval;
 
+    private SpotifyStateDescriptionOptionsProvider stateDescriptionProvider;
+
     private PlaybackInformationCache playbackInfo = new PlaybackInformationCache();
-    private SpotifyHandlerFactory factory;
     private Map<String, Device> availableDevices = new ConcurrentHashMap<>();
     private Map<String, PlaylistSimplified> savedPlaylists = new ConcurrentHashMap<>();
 
@@ -127,9 +123,9 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
     private boolean noInformationAvailable = false;
 
-    public SpotifyHandler(Thing thing, SpotifyHandlerFactory factory) {
+    public SpotifyHandler(Thing thing, SpotifyStateDescriptionOptionsProvider provider) {
         super(thing);
-        this.factory = factory;
+        this.stateDescriptionProvider = provider;
     }
 
     @Override
@@ -173,7 +169,7 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                 }
                 playbackInfoPollingRunnable.run();
                 break;
-            case CHANNEL_USERS_PLAYLISTS:
+            case CHANNEL_USER_PLAYLISTS:
                 if (command instanceof StringType) {
                     String playlistName = ((StringType) command).toString();
                     startPlaylist(playlistName);
@@ -455,38 +451,13 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
 
     private void updateDeviceChannelStates(Map<String, Device> devices) {
 
-        List<StateOption> states = new LinkedList<StateOption>();
+        List<StateOption> options = new LinkedList<StateOption>();
 
         for (Device device : devices.values()) {
-            states.add(new StateOption(device.getName(), device.getName()));
+            options.add(new StateOption(device.getName(), device.getName()));
         }
 
-        ChannelTypeUID channelTypeUID = new ChannelTypeUID(
-                getThing().getThingTypeUID().getBindingId() + ":" + CHANNEL_DEVICE_NAME);
-
-        ChannelType channelType = new ChannelType(channelTypeUID, false, "String", "Device name",
-                "Name of the active device", null, null, new StateDescription(null, null, null, "%s", false, states),
-                null);
-
-        factory.updateChannelType(channelType);
-
-        ThingBuilder thingBuilder = editThing();
-
-        Channel channel = ChannelBuilder.create(new ChannelUID(getThing().getUID(), CHANNEL_DEVICE_NAME), "String")
-                .withType(channelTypeUID).build();
-
-        // replace existing currentActivity with updated one
-        List<Channel> currentChannels = getThing().getChannels();
-        List<Channel> newChannels = new ArrayList<Channel>();
-        for (Channel c : currentChannels) {
-            if (!c.getUID().equals(channel.getUID())) {
-                newChannels.add(c);
-            }
-        }
-        newChannels.add(channel);
-        thingBuilder.withChannels(newChannels);
-
-        updateThing(thingBuilder.build());
+        stateDescriptionProvider.setStateOptions(new ChannelUID(getThing().getUID(), CHANNEL_DEVICE_NAME), options);
 
     }
 
@@ -616,10 +587,10 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                 PlaylistSimplified[] playlistSimplified = playlistSimplifiedPaging.getItems();
 
                 Map<String, PlaylistSimplified> newPlaylists = new ConcurrentHashMap<>();
-                List<StateOption> states = new LinkedList<StateOption>();
+                List<StateOption> options = new LinkedList<StateOption>();
 
                 for (PlaylistSimplified playlist : playlistSimplified) {
-                    states.add(new StateOption(playlist.getName(), playlist.getName()));
+                    options.add(new StateOption(playlist.getName(), playlist.getName()));
                     newPlaylists.put(playlist.getName(), playlist);
                 }
 
@@ -628,33 +599,8 @@ public class SpotifyHandler extends BaseThingHandler implements AuthorizationCod
                     return;
                 }
 
-                ChannelTypeUID channelTypeUID = new ChannelTypeUID(
-                        getThing().getThingTypeUID().getBindingId() + ":" + CHANNEL_USERS_PLAYLISTS);
-
-                ChannelType channelType = new ChannelType(channelTypeUID, false, "String", "User's playlists",
-                        "User's list of playlist", null, null,
-                        new StateDescription(null, null, null, "%s", false, states), null);
-
-                factory.updateChannelType(channelType);
-
-                ThingBuilder thingBuilder = editThing();
-
-                Channel channel = ChannelBuilder
-                        .create(new ChannelUID(getThing().getUID(), CHANNEL_USERS_PLAYLISTS), "String")
-                        .withType(channelTypeUID).build();
-
-                // replace existing currentActivity with updated one
-                List<Channel> currentChannels = getThing().getChannels();
-                List<Channel> newChannels = new ArrayList<Channel>();
-                for (Channel c : currentChannels) {
-                    if (!c.getUID().equals(channel.getUID())) {
-                        newChannels.add(c);
-                    }
-                }
-                newChannels.add(channel);
-                thingBuilder.withChannels(newChannels);
-
-                updateThing(thingBuilder.build());
+                stateDescriptionProvider.setStateOptions(new ChannelUID(getThing().getUID(), CHANNEL_USER_PLAYLISTS),
+                        options);
 
                 savedPlaylists = newPlaylists;
 

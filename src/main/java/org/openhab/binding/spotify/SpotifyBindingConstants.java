@@ -42,13 +42,12 @@ public class SpotifyBindingConstants {
 
     // List of all Channel ids
     public static final String CHANNEL_PLAYER_CONTROL = "playerControl";
-    public static final String CHANNEL_DEVICE_NAME = "deviceName";
-    public static final String CHANNEL_DEVICE_VOLUME = "deviceVolume";
     public static final String CHANNEL_TRACK_ARTIST = "trackArtist";
     public static final String CHANNEL_TRACK_TITLE = "trackTitle";
     public static final String CHANNEL_TRACK_ALBUM = "trackAlbum";
     public static final String CHANNEL_TRACK_DURATION = "trackDuration";
     public static final String CHANNEL_TRACK_PROGRESS = "trackProgress";
-    public static final String CHANNEL_USERS_PLAYLISTS = "usersPlaylists";
-
+    public static final String CHANNEL_USER_PLAYLISTS = "userPlaylists";
+    public static final String CHANNEL_DEVICE_NAME = "deviceName";
+    public static final String CHANNEL_DEVICE_VOLUME = "deviceVolume";
 }
